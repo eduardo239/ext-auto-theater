@@ -6,9 +6,22 @@ const MAX_ATTEMPTS = 48; // ~12s for player/chat to appear
 
 let pollTimer = null;
 let activeVideoId = null;
+const CLICK_COOLDOWN_MS = 1500;
+const lastClick = { theater: 0, chat: 0 };
+
+function recentlyClicked(key) {
+  return Date.now() - lastClick[key] < CLICK_COOLDOWN_MS;
+}
+
+function markClicked(key) {
+  lastClick[key] = Date.now();
+}
 
 function isWatchPage() {
-  return location.pathname === "/watch" && new URLSearchParams(location.search).has("v");
+  return (
+    location.pathname === "/watch" &&
+    new URLSearchParams(location.search).has("v")
+  );
 }
 
 function getVideoId() {
@@ -21,8 +34,7 @@ function getWatchFlexy() {
 
 function isTheaterOn(flexy) {
   return (
-    flexy.hasAttribute("theater") ||
-    flexy.hasAttribute("full-bleed-player")
+    flexy.hasAttribute("theater") || flexy.hasAttribute("full-bleed-player")
   );
 }
 
@@ -35,18 +47,26 @@ function enableTheaterMode() {
   const sizeButton = document.querySelector("button.ytp-size-button");
   if (!sizeButton) return false;
 
+  // The button is a toggle: clicking again before the state updates would undo it.
+  if (recentlyClicked("theater")) return false;
+  markClicked("theater");
   sizeButton.click();
-  return isTheaterOn(flexy);
+  return false; // confirmed on the next poll
 }
 
 function getLiveChat() {
-  return document.querySelector("ytd-live-chat-frame#chat, ytd-live-chat-frame, #chat");
+  return document.querySelector(
+    "ytd-live-chat-frame#chat, ytd-live-chat-frame, #chat",
+  );
 }
 
 function isLiveVideo() {
   const flexy = getWatchFlexy();
   if (flexy?.hasAttribute("is-live-video")) return true;
-  if (document.querySelector(".ytp-live-badge:not([disabled])")) return true;
+  const badge = document.querySelector(".ytp-live-badge");
+  // The badge element exists (hidden) on non-live videos too, so check visibility.
+  if (badge && !badge.hasAttribute("disabled") && badge.offsetParent !== null)
+    return true;
   if (getLiveChat()) return true;
   return false;
 }
@@ -54,19 +74,23 @@ function isLiveVideo() {
 function collapseLiveChat() {
   const chat = getLiveChat();
   if (!chat) return false;
-  if (chat.hasAttribute("collapsed") || chat.collapsed === true) return true;
+  // Content scripts cannot see page JS properties, so rely on the DOM attribute only.
+  if (chat.hasAttribute("collapsed")) return true;
 
   const hideButton =
     document.querySelector("#show-hide-button button") ||
     document.querySelector('#show-hide-button [id="button"]') ||
     document.querySelector(
-      'button[aria-label*="Hide chat" i], button[aria-label*="Ocultar chat" i], button[aria-label*="Ocultar o chat" i]'
+      'button[aria-label*="Hide chat" i], button[aria-label*="Ocultar chat" i], button[aria-label*="Ocultar o chat" i]',
     );
 
   if (!hideButton) return false;
 
+  // Toggle button: avoid re-opening the chat by clicking twice.
+  if (recentlyClicked("chat")) return false;
+  markClicked("chat");
   hideButton.click();
-  return chat.hasAttribute("collapsed") || chat.collapsed === true;
+  return false; // confirmed on the next poll
 }
 
 function applyForCurrentVideo() {
@@ -96,8 +120,9 @@ function startApplying() {
     return;
   }
 
-  const videoId = getVideoId();
-  activeVideoId = videoId;
+  activeVideoId = getVideoId();
+  lastClick.theater = 0;
+  lastClick.chat = 0;
 
   let attempts = 0;
   pollTimer = setInterval(() => {

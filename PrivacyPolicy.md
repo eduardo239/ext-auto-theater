@@ -1,7 +1,7 @@
 # Privacy Policy — YouTube Auto Theater
 
 **Last updated:** August 26, 2026  
-**Developer:** eduardo239  
+**Developer:** eduardo239
 
 YouTube Auto Theater is a browser extension that automatically enables YouTube theater mode and collapses live chat on watch pages.
 
